@@ -322,71 +322,6 @@ async def health():
 
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
-    """OpenAI-compatible completions endpoint (for direct prompt input)"""
-    
-    try:
-        if model is None:
-            raise HTTPException(status_code=500, detail="No model loaded")
-        
-        if not request.prompt:
-            raise HTTPException(status_code=400, detail="No prompt provided")
-        
-        # Use the prompt directly
-        prompt = request.prompt
-        
-        # Generate response - only pass provided parameters
-        generation_params = {}
-        
-        # Only include parameters that were actually provided in the request
-        if request.temperature is not None:
-            generation_params['temperature'] = request.temperature
-        if request.max_tokens is not None:
-            generation_params['max_tokens'] = request.max_tokens
-        if request.top_p is not None:
-            generation_params['top_p'] = request.top_p
-        if request.do_sample is not None:
-            generation_params['do_sample'] = request.do_sample
-        if request.num_beams is not None:
-            generation_params['num_beams'] = request.num_beams
-        if request.repetition_penalty is not None:
-            generation_params['repetition_penalty'] = request.repetition_penalty
-        if request.length_penalty is not None:
-            generation_params['length_penalty'] = request.length_penalty
-        if request.early_stopping is not None:
-            generation_params['early_stopping'] = request.early_stopping
-        if request.no_repeat_ngram_size is not None:
-            generation_params['no_repeat_ngram_size'] = request.no_repeat_ngram_size
-        if request.stop is not None:
-            generation_params['stop'] = request.stop
-        
-        generated_text = generate_text(prompt=prompt, **generation_params)
-        
-        # Create response
-        response = CompletionResponse(
-            id=f"cmpl-{int(time.time())}",
-            created=int(time.time()),
-            model=request.model,
-            choices=[{
-                "index": 0,
-                "text": generated_text,
-                "finish_reason": "stop"
-            }],
-            usage={
-                "prompt_tokens": len(prompt.split()),  # Approximate
-                "completion_tokens": len(generated_text.split()),  # Approximate
-                "total_tokens": len(prompt.split()) + len(generated_text.split())
-            }
-        )
-        
-        return response
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"❌ Completion error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-async def chat_completions(request: CompletionRequest):
     """OpenAI-compatible chat completions endpoint"""
     
     try:
@@ -604,7 +539,7 @@ def main():
                        help="Model name to load (required)")
     parser.add_argument("--host", type=str, default="0.0.0.0", 
                        help="Host to bind the server")
-    parser.add_argument("--port", type=int, default=7979, 
+    parser.add_argument("--port", type=int, default=8000, 
                        help="Port to bind the server")
     parser.add_argument("--mode", type=str, choices=["server", "test", "interactive"], 
                        default="server", help="Mode to run in")
