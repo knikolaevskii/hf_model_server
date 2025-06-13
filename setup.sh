@@ -9,7 +9,7 @@ echo "🚀 Setting up Hugging Face Model Server on RunPod"
 echo "=================================================="
 
 # Navigate to the project directory
-cd /root/server/hf_container
+cd /root/server/hf_model_server
 
 # Check if Python is available
 echo "🐍 Checking Python installation..."
@@ -78,7 +78,7 @@ echo ""
 echo "✅ Setup completed successfully!"
 echo ""
 echo "To activate the virtual environment in the future, run:"
-echo "source /root/server/hf_container/venv/bin/activate"
+echo "source /root/server/hf_model_server/venv/bin/activate"
 echo ""
 echo "To start the server, run:"
 echo "python3 hf_server.py --model <model_name>"
