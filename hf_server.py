@@ -44,7 +44,7 @@ class ChatMessage(BaseModel):
 class ChatCompletionRequest(BaseModel):
     model: str
     messages: list[dict]  # Change from list[ChatMessage] to list[dict] for flexibility
-    temperature: Optional[float] = None
+    temperature: Optional[float] = 0.0
     max_tokens: Optional[int] = None
     top_p: Optional[float] = None
     frequency_penalty: Optional[float] = None
@@ -52,7 +52,7 @@ class ChatCompletionRequest(BaseModel):
     stop: Optional[list[str]] = None
     stream: Optional[bool] = False
     # Additional generation parameters
-    do_sample: Optional[bool] = None
+    do_sample: Optional[bool] = False
     num_beams: Optional[int] = None
     repetition_penalty: Optional[float] = None
     length_penalty: Optional[float] = None
@@ -62,7 +62,7 @@ class ChatCompletionRequest(BaseModel):
 class CompletionRequest(BaseModel):
     model: str
     prompt: str
-    temperature: Optional[float] = None
+    temperature: Optional[float] = 0.0
     max_tokens: Optional[int] = None
     top_p: Optional[float] = None
     frequency_penalty: Optional[float] = None
@@ -70,7 +70,7 @@ class CompletionRequest(BaseModel):
     stop: Optional[list[str]] = None
     stream: Optional[bool] = False
     # Additional generation parameters
-    do_sample: Optional[bool] = None
+    do_sample: Optional[bool] = False
     num_beams: Optional[int] = None
     repetition_penalty: Optional[float] = None
     length_penalty: Optional[float] = None
@@ -197,7 +197,7 @@ def load_model(model_name: str, force_reload: bool = False):
         return False
 
 def generate_text(prompt: str, **kwargs) -> str:
-    """Generate text using the loaded model with only provided parameters"""
+    """Generate text using the loaded model with smart parameter handling"""
     global model, tokenizer, device
     
     if model is None or tokenizer is None:
@@ -205,7 +205,13 @@ def generate_text(prompt: str, **kwargs) -> str:
     
     try:
         # Tokenize input
-        inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048)
+        inputs = tokenizer(
+            prompt, 
+            return_tensors="pt", 
+            padding="longest",
+            max_length=tokenizer.model_max_length,
+            truncation=False  # Match HF model
+        )
         input_ids = inputs['input_ids'].to(device)
         attention_mask = inputs['attention_mask'].to(device)
         
@@ -213,7 +219,7 @@ def generate_text(prompt: str, **kwargs) -> str:
         if device.type == "cuda":
             torch.cuda.empty_cache()
         
-        # Start with base generation parameters (only required ones)
+        # Start with base generation parameters
         generation_kwargs = {
             "input_ids": input_ids,
             "attention_mask": attention_mask,
@@ -222,35 +228,66 @@ def generate_text(prompt: str, **kwargs) -> str:
             "num_return_sequences": 1
         }
         
-        # Only add parameters that were explicitly provided
+        # Handle parameters with smart defaults and validation
         provided_params = {}
         
-        # Handle max_tokens specifically
-        if 'max_tokens' in kwargs and kwargs['max_tokens'] is not None:
-            generation_kwargs["max_new_tokens"] = kwargs['max_tokens']
-            provided_params["max_new_tokens"] = kwargs['max_tokens']
+        # Handle max_tokens - convert to max_new_tokens
+        if 'max_tokens' in kwargs:
+            max_tokens = kwargs['max_tokens']
+            if max_tokens is not None and max_tokens > 0:
+                generation_kwargs["max_new_tokens"] = max_tokens
+                provided_params["max_new_tokens"] = max_tokens
+            else:
+                # Default fallback for None or 0 values
+                generation_kwargs["max_new_tokens"] = 256
+                provided_params["max_new_tokens"] = 256
         
-        # Add generation parameters only if they were provided
-        # Handle do_sample and temperature logic properly
-        if 'do_sample' in kwargs and kwargs['do_sample'] is not None:
-            generation_kwargs['do_sample'] = kwargs['do_sample']
-            provided_params['do_sample'] = kwargs['do_sample']
-            
-            # Only add temperature if we're sampling
-            if kwargs['do_sample'] and 'temperature' in kwargs and kwargs['temperature'] is not None:
-                generation_kwargs['temperature'] = kwargs['temperature']
-                provided_params['temperature'] = kwargs['temperature']
-        elif 'temperature' in kwargs and kwargs['temperature'] is not None and kwargs['temperature'] > 0:
-            # If temperature is provided but do_sample isn't, enable sampling
+        # Handle temperature and sampling logic
+        temperature = kwargs.get('temperature')
+        do_sample = kwargs.get('do_sample')
+        
+        # Determine if we should sample
+        should_sample = False if temperature == 0 or temperature == 0.0 else True
+        
+        if should_sample:
             generation_kwargs['do_sample'] = True
-            generation_kwargs['temperature'] = kwargs['temperature']
             provided_params['do_sample'] = True
-            provided_params['temperature'] = kwargs['temperature']
+            
+            # Set temperature if provided and valid
+            if temperature is not None and temperature > 0:
+                generation_kwargs['temperature'] = temperature
+                provided_params['temperature'] = temperature
+            else:
+                # Default temperature for sampling
+                generation_kwargs['temperature'] = 0.7
+                provided_params['temperature'] = 0.7
+        else:
+            # Deterministic generation
+            generation_kwargs['do_sample'] = False
+            provided_params['do_sample'] = False
+            # Don't set temperature for deterministic generation
         
-        # Add other parameters
+        # Handle other sampling parameters (only if we're sampling)
+        if generation_kwargs.get('do_sample', False):
+            if 'top_p' in kwargs and kwargs['top_p'] is not None:
+                generation_kwargs['top_p'] = kwargs['top_p']
+                provided_params['top_p'] = kwargs['top_p']
+        
+        # Handle beam search parameters
+        if 'num_beams' in kwargs and kwargs['num_beams'] is not None and kwargs['num_beams'] > 1:
+            generation_kwargs['num_beams'] = kwargs['num_beams']
+            provided_params['num_beams'] = kwargs['num_beams']
+            # Beam search is inherently deterministic, so disable sampling
+            generation_kwargs['do_sample'] = False
+            provided_params['do_sample'] = False
+            # Remove temperature and top_p for beam search
+            generation_kwargs.pop('temperature', None)
+            generation_kwargs.pop('top_p', None)
+            provided_params.pop('temperature', None)
+            provided_params.pop('top_p', None)
+        
+        # Handle other generation parameters
         param_mapping = {
-            'num_beams': 'num_beams',
-            'top_p': 'top_p',
             'repetition_penalty': 'repetition_penalty',
             'length_penalty': 'length_penalty',
             'early_stopping': 'early_stopping',
@@ -262,12 +299,7 @@ def generate_text(prompt: str, **kwargs) -> str:
                 generation_kwargs[generation_param] = kwargs[param_name]
                 provided_params[generation_param] = kwargs[param_name]
         
-        # Only add top_p if we're sampling
-        if 'top_p' in generation_kwargs and not generation_kwargs.get('do_sample', False):
-            del generation_kwargs['top_p']
-            del provided_params['top_p']
-        
-        # Handle stop sequences if provided
+        # Handle stop sequences
         if 'stop' in kwargs and kwargs['stop'] is not None and kwargs['stop']:
             stop_sequences = kwargs['stop']
             stop_token_ids = []
@@ -275,14 +307,28 @@ def generate_text(prompt: str, **kwargs) -> str:
                 tokens = tokenizer.encode(stop_seq, add_special_tokens=False)
                 stop_token_ids.extend(tokens)
             if stop_token_ids:
-                generation_kwargs["eos_token_id"] = stop_token_ids
+                generation_kwargs["eos_token_id"] = list(set(stop_token_ids + [tokenizer.eos_token_id]))
                 provided_params["stop_sequences"] = stop_sequences
         
-        print(f"🎯 Using only provided parameters: {provided_params}")
+        print(f"🎯 Generation parameters: {provided_params}")
         
         # Generate response
         with torch.no_grad():
-            outputs = model.generate(**generation_kwargs)
+            try:
+                outputs = model.generate(**generation_kwargs)
+            except Exception as gen_error:
+                print(f"Generation failed with params: {generation_kwargs}")
+                print(f"Error: {gen_error}")
+                # Fallback to minimal generation
+                minimal_kwargs = {
+                    "input_ids": input_ids,
+                    "attention_mask": attention_mask,
+                    "max_new_tokens": 100,
+                    "do_sample": False,
+                    "pad_token_id": tokenizer.eos_token_id,
+                    "eos_token_id": tokenizer.eos_token_id,
+                }
+                outputs = model.generate(**minimal_kwargs)
         
         # Decode only the new tokens
         generated_tokens = outputs[0][input_ids.shape[1]:]
@@ -346,17 +392,15 @@ async def chat_completions(request: ChatCompletionRequest):
                 prompt_parts.append(f"Assistant: {content}")
         
         prompt = "\n".join(prompt_parts)
-        if not prompt.endswith("\nAssistant:"):
-            prompt += "\nAssistant:"
         
-        # Generate response - only pass provided parameters
+        # Prepare generation parameters - pass ALL parameters from request
         generation_params = {}
         
-        # Only include parameters that were actually provided in the request
-        if request.temperature is not None:
-            generation_params['temperature'] = request.temperature
-        if request.max_tokens is not None:
-            generation_params['max_tokens'] = request.max_tokens
+        # Always pass these parameters (Text2SQLGeneratorAPI always sends them)
+        generation_params['temperature'] = request.temperature
+        generation_params['max_tokens'] = request.max_tokens
+        
+        # Include other parameters if provided
         if request.top_p is not None:
             generation_params['top_p'] = request.top_p
         if request.do_sample is not None:
@@ -418,14 +462,14 @@ async def completions(request: CompletionRequest):
         # Use the prompt directly
         prompt = request.prompt
         
-        # Generate response - only pass provided parameters
+        # Prepare generation parameters - pass ALL parameters from request
         generation_params = {}
         
-        # Only include parameters that were actually provided in the request
-        if request.temperature is not None:
-            generation_params['temperature'] = request.temperature
-        if request.max_tokens is not None:
-            generation_params['max_tokens'] = request.max_tokens
+        # Always pass these parameters (Text2SQLGeneratorAPI always sends them)
+        generation_params['temperature'] = request.temperature
+        generation_params['max_tokens'] = request.max_tokens
+        
+        # Include other parameters if provided
         if request.top_p is not None:
             generation_params['top_p'] = request.top_p
         if request.do_sample is not None:
@@ -519,7 +563,7 @@ def test_model_interactive():
                 continue
             
             start_time = time.time()
-            response = generate_text(prompt=prompt, max_tokens=100)
+            response = generate_text(prompt=prompt, max_tokens=100, temperature=0.0)
             generation_time = time.time() - start_time
             
             print(f"\n🤖 Response: {response}")
@@ -579,7 +623,7 @@ def main():
             print(f"Prompt: {prompt}")
             
             start_time = time.time()
-            response = generate_text(prompt=prompt, max_tokens=100)
+            response = generate_text(prompt=prompt, max_tokens=100, temperature=0.0)
             generation_time = time.time() - start_time
             
             print(f"Response: {response}")
