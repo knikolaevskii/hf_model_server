@@ -54,6 +54,8 @@ python3 model_tester.py --server http://localhost:8000 --models microsoft/DialoG
 ### 6. Test without loading models (if already loaded):
 ```bash
 python3 model_tester.py --server http://localhost:8000 --models current-model --no-load
+
+python3 model_tester.py --server http://localhost:8000 --models premai-io/prem-1B-SQL --no-load
 ```
 
 ## What the Script Tests:

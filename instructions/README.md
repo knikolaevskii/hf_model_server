@@ -92,6 +92,8 @@ Options:
 ### Server Mode (Default)
 ```bash
 python3 hf_server.py --model defog/llama-3-sqlcoder-8b --mode server
+
+python3 hf_server.py --model premai-io/prem-1B-SQL --mode server
 ```
 Starts the API server on the specified port.
 
