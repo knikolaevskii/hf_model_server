@@ -309,7 +309,8 @@ def generate_text(prompt: str, **kwargs) -> str:
             if stop_token_ids:
                 generation_kwargs["eos_token_id"] = list(set(stop_token_ids + [tokenizer.eos_token_id]))
                 provided_params["stop_sequences"] = stop_sequences
-        
+
+        print(f"Temperature: {temperature}")
         print(f"🎯 Generation parameters: {provided_params}")
         
         # Generate response
