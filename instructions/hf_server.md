@@ -22,7 +22,7 @@ pip install torch transformers fastapi uvicorn accelerate
 
 **Start the server:**
 ```bash
-python3 hf_server.py --model microsoft/DialoGPT-medium --port 7860
+python3 hf_server.py --model defog/sqlcoder-7b-2 --port 7860
 ```
 
 **Test the API:**
