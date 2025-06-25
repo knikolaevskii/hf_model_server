@@ -462,6 +462,10 @@ async def completions(request: CompletionRequest):
         
         # Use the prompt directly
         prompt = request.prompt
+
+        print("\n[REQUEST - /v1/completions]")
+        print(request.model_dump_json(indent=2))
+
         
         # Prepare generation parameters - pass ALL parameters from request
         generation_params = {}
