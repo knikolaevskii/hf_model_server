@@ -1,0 +1,19 @@
+{
+  "timestamp": "2025-06-27T16:33:05.999912",
+  "device_info": {
+    "cuda_available": true,
+    "device_name": "NVIDIA GeForce RTX 3090",
+    "total_memory": 25307578368
+  },
+  "baseline_memory": {
+    "ram_gb": 0.5417747497558594,
+    "vram_gb": 0.0
+  },
+  "results": [
+    {
+      "model_name": "amazon/chronos-t5-small",
+      "error": "Failed to load tokenizer with all methods: not a string",
+      "success": false
+    }
+  ]
+}

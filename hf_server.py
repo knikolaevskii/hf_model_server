@@ -167,6 +167,17 @@ def load_model(model_name: str, force_reload: bool = False):
         
         load_time = time.time() - start_time
         print(f"✅ Model loaded in {load_time:.2f} seconds")
+
+        # ⏱️ Log CPU RAM usage
+        process = psutil.Process(os.getpid())
+        ram_used_gb = process.memory_info().rss / (1024 ** 3)
+        print(f"🧠 CPU RAM used: {ram_used_gb:.2f} GB")
+
+        # 🔥 Log GPU VRAM usage
+        if device.type == "cuda":
+            print(f"🔥 GPU VRAM allocated: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
+            print(f"📈 GPU VRAM reserved (cached): {torch.cuda.memory_reserved() / 1e9:.2f} GB")
+
         
         # Model info
         num_params = sum(p.numel() for p in model.parameters())
